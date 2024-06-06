@@ -11,8 +11,8 @@ from llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-from timber.models.modeling_llama import LlamaForCausalLM
-from timber.models.qwen.modeling_qwen2 import Qwen2ForCausalLM
+from hip.models.modeling_llama import LlamaForCausalLM
+from hip.models.qwen.modeling_qwen2 import Qwen2ForCausalLM
 
 from vllm import LLM, SamplingParams
 
@@ -221,8 +221,8 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
     tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
     
     if ATTENTION_METHOD == 'streaming_llm':
-        from timber.models.modeling_llama import LlamaCustomAttention
-        from timber.models.qwen.modeling_qwen2 import Qwen2CustomAttention
+        from hip.models.modeling_llama import LlamaCustomAttention
+        from hip.models.qwen.modeling_qwen2 import Qwen2CustomAttention
         
         config = AutoConfig.from_pretrained(path)
         config.attn_implementation = config._attn_implementation = 'sdpa'
