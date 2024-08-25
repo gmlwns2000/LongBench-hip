@@ -2,33 +2,16 @@ import os
 from datasets import load_dataset
 import torch
 import json
-from transformers import AutoTokenizer, LlamaTokenizer, LlamaForCausalLM, AutoModelForCausalLM, AutoConfig
+from transformers import AutoTokenizer
 from tqdm import tqdm
 import numpy as np
 import random
-import argparse
-from llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from vllm import LLM, SamplingParams
 
-def parse_args(args=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default=None, choices=[
-        "llama2-7b-chat-4k", 
-        "longchat-v1.5-7b-32k", 
-        "xgen-7b-8k", 
-        "internlm-7b-8k", 
-        "chatglm2-6b", 
-        "chatglm2-6b-32k", 
-        "chatglm3-6b-32k", 
-        "vicuna-v1.5-7b-16k",
-        "llama2-7b-chat-32k",
-    ])
-    parser.add_argument('--e', action='store_true', help="Evaluate on LongBench-E")
-    parser.add_argument('--stride', type=int, default=None)
-    return parser.parse_args(args)
+from args import parse_args
 
 # This is the customized building prompt for chat models
 def build_chat(tokenizer, prompt, model_name):
@@ -44,6 +27,18 @@ def build_chat(tokenizer, prompt, model_name):
         prompt = conv.get_prompt()
     elif "llama2" in model_name:
         prompt = f"[INST]{prompt}[/INST]"
+    elif "llama3.1" in model_name:
+        prompt = f"""<|start_header_id|>system<|end_header_id|>
+
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+{prompt}
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
     elif "xgen" in model_name:
         header = (
             "A chat between a curious human and an artificial intelligence assistant. "
@@ -90,7 +85,7 @@ def get_pred(
                 tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt", add_special_tokens=False).input_ids[0]
             if len(tokenized_prompt) > max_length:
                 half = int(max_length/2)
-                prompt = tokenizer.decode(tokenized_prompt[:half], skip_special_tokens=True)+tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=True)
+                prompt = tokenizer.decode(tokenized_prompt[:half], skip_special_tokens=False)+tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=False)
             if dataset not in ["trec", "triviaqa", "samsum", "lsht", "lcc", "repobench-p"]: # chat models are better off without build prompts on these tasks
                 prompt = build_chat(tokenizer, prompt, model_name)
             if "chatglm3" in model_name:
@@ -132,10 +127,13 @@ def get_pred(
                 frequency_penalty=0.0,
                 repetition_penalty=1.0,
                 ignore_eos=False,
-                skip_special_tokens=True,
+                skip_special_tokens=False,
             )
             
-            prompt = tokenizer.decode(input.input_ids[0], skip_special_tokens=True)
+            prompt = tokenizer.decode(input.input_ids[0], skip_special_tokens=False)
+            
+            # print(prompt)
+            
             vllm_outputs = model.generate(
                 prompt, 
                 sampling_params,
@@ -161,18 +159,20 @@ def seed_everything(seed):
 
 def load_model_and_tokenizer(path, model_name, device, seq_len):
     tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
+    
     model = LLM(
         path,
         max_num_seqs=1,
-        max_context_len_to_capture=seq_len + 500,
-        max_model_len=seq_len + 500,
+        max_seq_len_to_capture=seq_len + 512,
+        max_model_len=seq_len + 512,
         swap_space=0,
-        kv_cache_dtype='fp8_e5m2',
+        kv_cache_dtype=os.getenv('KV_CACHE_DTYPE', 'fp8_e5m2'),
         dtype='half',
         gpu_memory_utilization=0.9,
         tensor_parallel_size=torch.cuda.device_count(),
-        enforce_eager=os.environ.get('FORCE_EAGER','0')=='1',
+        enforce_eager=os.environ.get('ENFORCE_EAGER','0')=='1',
         trust_remote_code=True,
+        max_num_batched_tokens=8192,
     )
     
     return model, tokenizer
@@ -214,7 +214,7 @@ if __name__ == '__main__':
     seed_everything(42)
     args = parse_args()
     world_size = 1
-    # mp.set_start_method('spawn', force=True)
+    mp.set_start_method('spawn', force=True)
 
     model2path = json.load(open("config/model2path.json", "r"))
     model2maxlen = json.load(open("config/model2maxlen.json", "r"))
@@ -253,14 +253,14 @@ if __name__ == '__main__':
     for dataset in datasets:
         if args.e:
             data = load_dataset('THUDM/LongBench', f"{dataset}_e", split='test')
-            if not os.path.exists(f"pred_e/{model_name}"):
-                os.makedirs(f"pred_e/{model_name}")
-            out_path = f"pred_e/{model_name}/{dataset}.jsonl"
+            if not os.path.exists(f"pred_e/{args.name}/{model_name}"):
+                os.makedirs(f"pred_e/{args.name}/{model_name}")
+            out_path = f"pred_e/{args.name}/{model_name}/{dataset}.jsonl"
         else:
             data = load_dataset('THUDM/LongBench', dataset, split='test')
-            if not os.path.exists(f"pred/{model_name}"):
-                os.makedirs(f"pred/{model_name}")
-            out_path = f"pred/{model_name}/{dataset}.jsonl"
+            if not os.path.exists(f"pred/{args.name}/{model_name}"):
+                os.makedirs(f"pred/{args.name}/{model_name}")
+            out_path = f"pred/{args.name}/{model_name}/{dataset}.jsonl"
         prompt_format = dataset2prompt[dataset]
         max_gen = dataset2maxlen[dataset]
         data_all = [data_sample for data_sample in data]
