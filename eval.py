@@ -1,6 +1,5 @@
 import os
 import json
-import argparse
 import numpy as np
 
 from metrics import (
@@ -39,40 +38,7 @@ dataset2metric = {
     "repobench-p": code_sim_score,
 }
 
-def parse_args(args=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default=None, choices=[
-        "llama2-7b-chat-4k", 
-        "longchat-v1.5-7b-32k", 
-        "xgen-7b-8k", 
-        "internlm-7b-8k", 
-        "chatglm2-6b", 
-        "chatglm2-6b-32k", 
-        "chatglm3-6b-32k", 
-        "vicuna-v1.5-7b-16k",
-        "llama2-7b-chat-32k",
-        "llama2-13b-chat-32k",
-        "qwen2-14b-chat-32k",
-        "qwen2-7b-chat-32k",
-        "llama3-8b-8k",
-        "llama3-8b-16k",
-        "llama3-8b-262k",
-        "phi3-3b-128k",
-    ])
-    parser.add_argument('--e', action='store_true', help="Evaluate on LongBench-E")
-    parser.add_argument('--method', required=True, type=str, choices=[
-        'none',
-        'hip',
-        'streaming_llm',
-    ])
-    parser.add_argument('--k', default=None, type=int)
-    
-    args = parser.parse_args(args)
-    
-    if args.method in ['streaming_llm', 'hip']:
-        assert args.k is not None, 'sparse attention require k'
-    
-    return args
+from args import parse_args
 
 def scorer_e(dataset, predictions, answers, lengths, all_classes):
     scores = {"0-4k": [], "4-8k": [], "8k+": []}
@@ -109,17 +75,9 @@ if __name__ == '__main__':
     scores = dict()
     pred_root_name = None
     if args.e:
-        pred_root_name = 'pred_e'
+        path = f"pred_e/{args.name}/{args.model}/"
     else:
-        pred_root_name = 'pred'
-    
-    if args.method == 'none':
-        path = f"{pred_root_name}/{args.model}_{args.method}/"
-    elif args.method in ['streaming_llm', 'hip']:
-        path = f"{pred_root_name}/{args.model}_{args.method}_k{args.k}/"
-    else:
-        raise Exception()
-    
+        path = f"pred/{args.name}/{args.model}/"
     all_files = os.listdir(path)
     print("Evaluating on:", all_files)
     for filename in all_files:
@@ -140,10 +98,10 @@ if __name__ == '__main__':
         else:
             score = scorer(dataset, predictions, answers, all_classes)
         scores[dataset] = score
-    
-    out_path = os.path.join(path, 'result.json')
-    
+    if args.e:
+        out_path = f"pred_e/{args.name}/{args.model}/result.json"
+    else:
+        out_path = f"pred/{args.name}/{args.model}/result.json"
     with open(out_path, "w") as f:
         json.dump(scores, f, ensure_ascii=False, indent=4)
-    
-    print(json.dumps(scores, indent=2))
+    print(scores)

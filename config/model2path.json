@@ -16,4 +16,5 @@
     "llama3-8b-16k": "mattshumer/Llama-3-8B-16K",
     "llama3-8b-262k": "gradientai/Llama-3-8B-Instruct-262k",
     "phi3-3b-128k": "microsoft/Phi-3-mini-128k-instruct"
+    "llama3.1-8b-chat-128k": "meta-llama/Meta-Llama-3.1-8B-Instruct"
 }

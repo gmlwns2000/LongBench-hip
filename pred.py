@@ -6,8 +6,6 @@ from transformers import AutoTokenizer, LlamaTokenizer, AutoModelForCausalLM, Au
 from tqdm import tqdm
 import numpy as np
 import random
-import argparse
-from llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
@@ -16,44 +14,7 @@ from hip.models.qwen.modeling_qwen2 import Qwen2ForCausalLM
 
 from vllm import LLM, SamplingParams
 
-def parse_args(args=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--model', type=str, default=None, choices=[
-        "llama2-7b-chat-4k", 
-        "longchat-v1.5-7b-32k", 
-        "xgen-7b-8k", 
-        "internlm-7b-8k", 
-        "chatglm2-6b", 
-        "chatglm2-6b-32k", 
-        "chatglm3-6b-32k", 
-        "vicuna-v1.5-7b-16k",
-        "llama2-7b-chat-32k",
-        "llama2-13b-chat-32k",
-        "qwen2-14b-chat-32k",
-        "qwen2-7b-chat-32k",
-        "llama3-8b-8k",
-        "llama3-8b-16k",
-        "llama3-8b-262k",
-        "phi3-3b-128k",
-    ])
-    parser.add_argument('--e', action='store_true', help="Evaluate on LongBench-E")
-    parser.add_argument('--method', required=True, type=str, choices=[
-        'none',
-        'hip',
-        'streaming_llm',
-    ])
-    parser.add_argument('--k', default=None, type=int)
-    parser.add_argument('--stride', type=int, default=None)
-    
-    args = parser.parse_args(args)
-    
-    if args.method in ['streaming_llm', 'hip']:
-        assert args.k is not None, 'sparse attention require k'
-    
-    assert args.method == ATTENTION_METHOD
-    assert args.k == HIP_K
-    
-    return args
+from args import parse_args
 
 # This is the customized building prompt for chat models
 def build_chat(tokenizer, prompt, model_name):
@@ -69,6 +30,18 @@ def build_chat(tokenizer, prompt, model_name):
         prompt = conv.get_prompt()
     elif "llama2" in model_name:
         prompt = f"[INST]\n{prompt}\n[/INST]\n\n"
+    elif "llama3.1" in model_name:
+        prompt = f"""<|start_header_id|>system<|end_header_id|>
+
+Cutting Knowledge Date: December 2023
+Today Date: 26 Jul 2024
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+{prompt}
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+"""
     elif "xgen" in model_name:
         header = (
             "A chat between a curious human and an artificial intelligence assistant. "
@@ -138,7 +111,7 @@ def get_pred(
                 tokenized_prompt = tokenizer(prompt, truncation=False, return_tensors="pt", add_special_tokens=False).input_ids[0]
             if len(tokenized_prompt) > max_length:
                 half = int(max_length/2)
-                prompt = tokenizer.decode(tokenized_prompt[:half], skip_special_tokens=True)+tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=True)
+                prompt = tokenizer.decode(tokenized_prompt[:half], skip_special_tokens=False)+tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=False)
             if dataset not in ["trec", "triviaqa", "samsum", "lsht", "lcc", "repobench-p"]: # chat models are better off without build prompts on these tasks
                 prompt = build_chat(tokenizer, prompt, model_name)
             if "chatglm3" in model_name:
@@ -176,7 +149,7 @@ def get_pred(
                         temperature=1.0,
                         stopping_criteria=stopping_criteria,
                     )[0]
-                pred = tokenizer.decode(output[context_length:], skip_special_tokens=True)
+                pred = tokenizer.decode(output[context_length:], skip_special_tokens=False)
             else:
                 stop = []
                 if 'llama3' in model_name:
@@ -189,11 +162,11 @@ def get_pred(
                     frequency_penalty=0.0,
                     repetition_penalty=1.0,
                     ignore_eos=False,
-                    skip_special_tokens=True,
+                    skip_special_tokens=False,
                     stop=stop,
                 )
                 
-                prompt = tokenizer.decode(input.input_ids[0], skip_special_tokens=True)
+                prompt = tokenizer.decode(input.input_ids[0], skip_special_tokens=False)
                 vllm_outputs = model.generate(
                     prompt, 
                     sampling_params,
@@ -306,7 +279,7 @@ if __name__ == '__main__':
     
     # vllm will parallelize
     world_size = 1
-    # mp.set_start_method('spawn', force=True)
+    mp.set_start_method('spawn', force=True)
 
     model2path = json.load(open("config/model2path.json", "r"))
     model2maxlen = json.load(open("config/model2maxlen.json", "r"))
@@ -347,23 +320,14 @@ if __name__ == '__main__':
         pred_root_name = None
         if args.e:
             data = load_dataset('THUDM/LongBench', f"{dataset}_e", split='test')
-            pred_root_name = 'pred_e'
+            if not os.path.exists(f"pred_e/{args.name}/{model_name}"):
+                os.makedirs(f"pred_e/{args.name}/{model_name}")
+            out_path = f"pred_e/{args.name}/{model_name}/{dataset}.jsonl"
         else:
             data = load_dataset('THUDM/LongBench', dataset, split='test')
-            pred_root_name = 'pred'
-        
-        if args.method == 'none':
-            pred_root = f"{pred_root_name}/{model_name}_{args.method}"
-        elif args.method in ['streaming_llm', 'hip']:
-            pred_root = f"{pred_root_name}/{model_name}_{args.method}_k{args.k}"
-        else:
-            raise Exception()
-        
-        # pred_root = f"pred/{model_name}_{args.method}_k{args.k}"
-        
-        os.makedirs(pred_root, exist_ok=True)
-        out_path = os.path.join(pred_root, f'{dataset}.jsonl')
-        
+            if not os.path.exists(f"pred/{args.name}/{model_name}"):
+                os.makedirs(f"pred/{args.name}/{model_name}")
+            out_path = f"pred/{args.name}/{model_name}/{dataset}.jsonl"
         prompt_format = dataset2prompt[dataset]
         max_gen = dataset2maxlen[dataset]
         data_all = [data_sample for data_sample in data]
