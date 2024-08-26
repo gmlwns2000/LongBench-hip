@@ -71,7 +71,9 @@ def scorer(dataset, predictions, answers, all_classes):
 
 if __name__ == '__main__':
     args = parse_args()
+    
     scores = dict()
+    pred_root_name = None
     if args.e:
         path = f"pred_e/{args.name}/{args.model}/"
     else:
