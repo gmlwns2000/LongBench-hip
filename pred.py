@@ -227,10 +227,10 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
         model = LLM(
             path,
             max_num_seqs=1,
-            max_context_len_to_capture=seq_len + 500,
+            max_seq_len_to_capture=seq_len + 500,
             max_model_len=seq_len + 500,
             swap_space=0,
-            kv_cache_dtype='fp8_e5m2',
+            kv_cache_dtype=os.getenv('KV_CACHE_DTYPE', 'auto'),
             dtype='half',
             gpu_memory_utilization=0.9,
             tensor_parallel_size=torch.cuda.device_count(),
