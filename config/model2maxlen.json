@@ -9,5 +9,12 @@
     "vicuna-v1.5-7b-16k": 15500,
     "llama2-7b-chat-32k": 29000,
     "llama2-7b-chat-32k-4k": 3500,
+    "llama2-13b-chat-32k": 29000,
+    "qwen2-14b-chat-32k": 29000,
+    "qwen2-7b-chat-32k": 29000,
+    "llama3-8b-8k": 7500,
+    "llama3-8b-16k": 15500,
+    "llama3-8b-262k": 260000,
+    "phi3-3b-128k": 127000,
     "llama3.1-8b-chat-128k": 128000
 }
