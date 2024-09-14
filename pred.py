@@ -209,7 +209,7 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
             path,
             config=config,
             torch_dtype=torch.bfloat16,
-            load_in_4bit=True,
+            # load_in_4bit=True,
             device_map={'':device}
         )
         
