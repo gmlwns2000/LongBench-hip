@@ -160,20 +160,32 @@ def seed_everything(seed):
 def load_model_and_tokenizer(path, model_name, device, seq_len):
     tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
     
-    model = LLM(
-        path,
-        max_num_seqs=1,
-        max_seq_len_to_capture=seq_len + 512,
-        max_model_len=seq_len + 512,
-        swap_space=0,
-        kv_cache_dtype=os.getenv('KV_CACHE_DTYPE', 'fp8_e5m2'),
-        dtype='half',
-        gpu_memory_utilization=0.9,
-        tensor_parallel_size=torch.cuda.device_count(),
-        enforce_eager=os.environ.get('ENFORCE_EAGER','0')=='1',
-        trust_remote_code=True,
-        max_num_batched_tokens=8192,
-    )
+    if os.getenv('LONGBENCH_USING_HF_MODEL', '0') == '1':
+        if 'llama' in model_name:
+            from hip.models.modeling_llama import LlamaForCausalLM
+            
+            model = LlamaForCausalLM.from_pretrained(
+                path, 
+                torch_dtype=torch.bfloat16,
+                attn_impelmentation=,
+            )
+        else:
+            raise Exception()
+    else:
+        model = LLM(
+            path,
+            max_num_seqs=1,
+            max_seq_len_to_capture=seq_len + 512,
+            max_model_len=seq_len + 512,
+            swap_space=0,
+            kv_cache_dtype=os.getenv('KV_CACHE_DTYPE', 'auto'),
+            dtype='half',
+            gpu_memory_utilization=0.9,
+            tensor_parallel_size=torch.cuda.device_count(),
+            enforce_eager=os.environ.get('ENFORCE_EAGER','0')=='1',
+            trust_remote_code=True,
+            max_num_batched_tokens=8192,
+        )
     
     return model, tokenizer
     
