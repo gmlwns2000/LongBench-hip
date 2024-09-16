@@ -282,10 +282,13 @@ if __name__ == '__main__':
     world_size = 1
     mp.set_start_method('spawn', force=True)
 
+    model_name = args.model
     model2path = json.load(open("config/model2path.json", "r"))
+    if os.getenv('OVERRIDE_MODEL_PATH', '') != '':
+        model2path[model_name] = os.getenv('OVERRIDE_MODEL_PATH', '')
+        print('Using', model_name, model2path[model_name])
     model2maxlen = json.load(open("config/model2maxlen.json", "r"))
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model_name = args.model
     
     # define your model
     max_length = model2maxlen[model_name] if args.stride is None else args.stride
