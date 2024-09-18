@@ -236,7 +236,8 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
             tensor_parallel_size=torch.cuda.device_count(),
             enforce_eager=os.environ.get('ENFORCE_EAGER','0')=='1',
             trust_remote_code=True,
-            max_num_batched_tokens=8192,
+            enable_chunked_prefill=False,
+            max_num_batched_tokens=seq_len + 512,
         )
     
     return model, tokenizer
