@@ -123,7 +123,7 @@ def get_pred(
                 input = tokenizer(prompt, truncation=False, return_tensors="pt").to(device)
             context_length = input.input_ids.shape[-1]
             
-            if ATTENTION_METHOD == 'streaming_llm':
+            if ATTENTION_METHOD in ['streaming_llm', 'h2o']:
                 if dataset == "samsum": # prevent illegal output on samsum (model endlessly repeat "\nDialogue"), might be a prompting issue
                     raise Exception()
                     with torch.inference_mode():
@@ -141,14 +141,18 @@ def get_pred(
                     stop_words_ids = [tokenizer(stop_word, return_tensors='pt', add_special_tokens=False)['input_ids'].squeeze() for stop_word in stop_words]
                     stopping_criteria = transformers.StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids, tokenizer=tokenizer)])
                     
-                    output = model.generate(
-                        **input,
-                        max_new_tokens=max_gen,
-                        num_beams=1,
-                        do_sample=False,
-                        temperature=1.0,
-                        stopping_criteria=stopping_criteria,
-                    )[0]
+                    with torch.inference_mode():
+                        output = model.generate(
+                            **input,
+                            max_new_tokens=max_gen,
+                            num_beams=1,
+                            do_sample=False,
+                            temperature=1.0,
+                            stopping_criteria=stopping_criteria,
+                        )[0]
+                for m in model.modules():
+                    if hasattr(m, '_clean_cache'):
+                        m._clean_cache()
                 pred = tokenizer.decode(output[context_length:], skip_special_tokens=False)
             else:
                 stop = []
@@ -223,7 +227,53 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
         assert num_patched > 0
         
         model.eval()
-    else:
+    elif ATTENTION_METHOD == 'h2o':
+        from hip.models.modeling_llama import LlamaForCausalLM, LlamaConfig
+        
+        config = LlamaConfig.from_pretrained(path)
+        config._attn_implementation = config.attn_implementation = 'sdpa'
+        infer_dtype = torch.bfloat16
+        ModelClass = LlamaForCausalLM
+        
+        config.hh_size = HIP_K // 2
+        config.recent_size = HIP_K // 2
+        config._attn_implementation = config.attn_implementation = 'eager'
+        config.shift_q_pos = False
+        config.streaming = False
+        config.reduction_for_gqa = 'average'
+        config.is_decoding = True # use dense prefill
+        
+        model = ModelClass.from_pretrained(
+            path,
+            config=config,
+            device_map={'': device},
+            quantization_config=None,
+            torch_dtype=infer_dtype,
+            # torch_dtype=torch.float32,
+            trust_remote_code=True
+        )
+        
+        for m in model.modules():
+            if hasattr(m, 'attention_method'):
+                m.attention_method = 'h2o'
+                m.tree_k = HIP_K
+                m.tree_block_size_q = 64
+                m.tree_block_stride_q = 2
+                m.tree_block_size_k = 2
+                m.tree_block_stride_k = 1
+                m.tree_using_context_avg = False
+                m.tree_dense_queries = -1
+                m.tree_dense_layers = list(range(3))
+                m.tree_rope_method = 'none'
+                m.tree_enable_sparq = False
+                m.tree_enable_flash = True
+                m.tree_use_sliding_window = True
+                m.tree_sampling_method = 'center'
+            for m in model.modules():
+                if hasattr(m, 'attention_method'):
+                    m.tree_using_context_avg = False
+        model = model.eval()
+    else: 
         model = LLM(
             path,
             max_num_seqs=1,
