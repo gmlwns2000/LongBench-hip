@@ -31,7 +31,19 @@ def build_chat(tokenizer, prompt, model_name):
     elif "llama2" in model_name:
         prompt = f"[INST]\n{prompt}\n[/INST]\n\n"
     elif "llama3.1" in model_name:
-        prompt = f"""<|start_header_id|>system<|end_header_id|>
+        if "pretrained" in model_name:
+            f"""-------------------------------------------------------------------------------
+[System]: You are helpful assistant.
+-------------------------------------------------------------------------------
+[User]: Hi! I want to give a task about following document. Here is the context.
+
+{prompt}
+
+Now, please answer given task.
+-------------------------------------------------------------------------------
+[Assistant]: Sure! Here is my response. Response: """
+        else:
+            prompt = f"""<|start_header_id|>system<|end_header_id|>
 
 Cutting Knowledge Date: December 2023
 Today Date: 26 Jul 2024
