@@ -171,7 +171,7 @@ def get_pred(
                 for m in model.modules():
                     if hasattr(m, '_clean_cache'):
                         m._clean_cache()
-                pred = tokenizer.decode(output[context_length:], skip_special_tokens=False)
+                pred = tokenizer.decode(output[context_length:], skip_special_tokens=True)
             else:
                 stop = []
                 if 'llama3' in model_name:
