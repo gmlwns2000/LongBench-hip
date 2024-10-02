@@ -50,4 +50,4 @@ profile.*
 *.ncu-rep
 
 pred/
-pred_e/
+pred_e/models/

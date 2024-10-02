@@ -42,6 +42,11 @@ Today Date: 26 Jul 2024
 <|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
 """
+    elif "gemma2" in model_name:
+        prompt = f"""<start_of_turn>user
+{prompt}<end_of_turn>
+<start_of_turn>assistant
+"""
     elif "xgen" in model_name:
         header = (
             "A chat between a curious human and an artificial intelligence assistant. "
@@ -123,7 +128,7 @@ def get_pred(
                 input = tokenizer(prompt, truncation=False, return_tensors="pt").to(device)
             context_length = input.input_ids.shape[-1]
             
-            if ATTENTION_METHOD == 'streaming_llm':
+            if (ATTENTION_METHOD == 'streaming_llm') or ('gemma2' in model_name):
                 if dataset == "samsum": # prevent illegal output on samsum (model endlessly repeat "\nDialogue"), might be a prompting issue
                     raise Exception()
                     with torch.inference_mode():
@@ -137,12 +142,13 @@ def get_pred(
                             eos_token_id=[tokenizer.eos_token_id, tokenizer.encode("\n", add_special_tokens=False)[-1]],
                         )[0]
                 else:
-                    stop_words = ["<|eot_id|>"]
+                    stop_words = ["<|eot_id|>", "<eos>", "end_of_turn>"]
                     stop_words_ids = [tokenizer(stop_word, return_tensors='pt', add_special_tokens=False)['input_ids'].squeeze() for stop_word in stop_words]
                     stopping_criteria = transformers.StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids, tokenizer=tokenizer)])
                     
                     output = model.generate(
                         **input,
+                        min_new_tokens=1,
                         max_new_tokens=max_gen,
                         num_beams=1,
                         do_sample=False,
@@ -154,6 +160,8 @@ def get_pred(
                 stop = []
                 if 'llama3' in model_name:
                     stop.append('<|eot_id|>')
+                if 'gemma2' in model_name:
+                    stop.append('<end_of_turn>')
                 sampling_params = SamplingParams(
                     temperature=1.0,
                     top_p=1.0,
@@ -193,10 +201,11 @@ def seed_everything(seed):
 def load_model_and_tokenizer(path, model_name, device, seq_len):
     tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
     
-    if ATTENTION_METHOD == 'streaming_llm':
+    if (ATTENTION_METHOD == 'streaming_llm') or ('gemma2' in model_name):
         from hip.models.modeling_llama import LlamaCustomAttention
         from hip.models.qwen.modeling_qwen2 import Qwen2CustomAttention
-        
+        from hip.models.gemma.modeling_gemma2 import Gemma2ForCausalLM, Gemma2Config
+
         config = AutoConfig.from_pretrained(path)
         config.attn_implementation = config._attn_implementation = 'sdpa'
         config.max_position_embeddings = 131072
@@ -204,6 +213,8 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
         ModelClass = LlamaForCausalLM
         if 'qwen2' in model_name:
             ModelClass = Qwen2ForCausalLM
+        if 'gemma2' in model_name:
+            ModelClass = Gemma2ForCausalLM
         
         model = ModelClass.from_pretrained(
             path,
@@ -215,10 +226,13 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
         
         num_patched = 0
         for m in model.modules():
-            if isinstance(m, (LlamaCustomAttention, Qwen2CustomAttention)):
-                assert hasattr(m, 'attention_method')
-                m.attention_method = 'streaming_llm'
+            if hasattr(m, 'attention_method'):
+                m.attention_method = ATTENTION_METHOD
                 m.tree_k = HIP_K
+                m.tree_block_size_k = 2
+                m.tree_block_size_q = 16
+                m.tree_block_stride_q = 1
+                m.tree_sliding_window_size = 1024
                 num_patched += 1
         assert num_patched > 0
         
