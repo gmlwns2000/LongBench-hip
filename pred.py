@@ -215,12 +215,14 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
 
 def load_model_and_tokenizer(path, model_name, device, seq_len):
+    from hip.models.modeling_llama import LlamaForCausalLM, LlamaConfig
+    from hip.models.modeling_llama import LlamaCustomAttention
+    from hip.models.qwen.modeling_qwen2 import Qwen2CustomAttention
+    from hip.models.gemma.modeling_gemma2 import Gemma2ForCausalLM, Gemma2Config
+    
     tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
     
     if (ATTENTION_METHOD == 'streaming_llm') or ('gemma2' in model_name):
-        from hip.models.modeling_llama import LlamaCustomAttention
-        from hip.models.qwen.modeling_qwen2 import Qwen2CustomAttention
-        from hip.models.gemma.modeling_gemma2 import Gemma2ForCausalLM, Gemma2Config
 
         config = AutoConfig.from_pretrained(path)
         config.attn_implementation = config._attn_implementation = 'sdpa'
@@ -253,9 +255,7 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
         assert num_patched > 0
         
         model.eval()
-    elif ATTENTION_METHOD == 'h2o':
-        from hip.models.modeling_llama import LlamaForCausalLM, LlamaConfig
-        
+    elif ATTENTION_METHOD == 'h2o':        
         config = LlamaConfig.from_pretrained(path)
         config._attn_implementation = config.attn_implementation = 'sdpa'
         infer_dtype = torch.bfloat16
