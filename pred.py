@@ -80,6 +80,7 @@ def post_process(response, model_name):
         response = response.strip().replace("Assistant:", "")
     elif "internlm" in model_name:
         response = response.split("<eoa>")[0]
+    response = response.strip()
     return response
 
 ATTENTION_METHOD = os.getenv('ATTENTION_METHOD', 'none')
