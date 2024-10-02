@@ -30,7 +30,7 @@ def build_chat(tokenizer, prompt, model_name):
         prompt = conv.get_prompt()
     elif "llama2" in model_name:
         prompt = f"[INST]\n{prompt}\n[/INST]\n\n"
-    elif "llama3.1" in model_name
+    elif "llama3.1" in model_name:
         if "pretrained" in model_name:
             f"""-------------------------------------------------------------------------------
 [System]: You are helpful assistant.
