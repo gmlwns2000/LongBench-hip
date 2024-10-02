@@ -30,7 +30,7 @@ def build_chat(tokenizer, prompt, model_name):
         prompt = conv.get_prompt()
     elif "llama2" in model_name:
         prompt = f"[INST]\n{prompt}\n[/INST]\n\n"
-    elif "llama3.1" in model_name:
+    elif "llama3.1" in model_name
         if "pretrained" in model_name:
             f"""-------------------------------------------------------------------------------
 [System]: You are helpful assistant.
@@ -154,7 +154,7 @@ def get_pred(
                             eos_token_id=[tokenizer.eos_token_id, tokenizer.encode("\n", add_special_tokens=False)[-1]],
                         )[0]
                 else:
-                    stop_words = ["<|eot_id|>", "<eos>", "end_of_turn>"]
+                    stop_words = ["<|eot_id|>", "<eos>", "<end_of_turn>"]
                     stop_words_ids = [tokenizer(stop_word, return_tensors='pt', add_special_tokens=False)['input_ids'].squeeze() for stop_word in stop_words]
                     stopping_criteria = transformers.StoppingCriteriaList([StoppingCriteriaSub(stops=stop_words_ids, tokenizer=tokenizer)])
                     
