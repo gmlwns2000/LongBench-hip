@@ -248,8 +248,8 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
             if hasattr(m, 'attention_method'):
                 m.attention_method = ATTENTION_METHOD
                 m.tree_k = HIP_K
-                m.tree_block_size_k = 2
-                m.tree_block_size_q = 16
+                m.tree_block_size_k = 1
+                m.tree_block_size_q = 32
                 m.tree_block_stride_q = 1
                 m.tree_sliding_window_size = 1024
                 num_patched += 1
