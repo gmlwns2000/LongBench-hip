@@ -19,5 +19,6 @@
     "llama3.1-8b-chat-128k": 128000,
     "gemma2-2b-it-8k": 7500,
     "gemma2-2b-it-128k": 128000,
+    "gemma2-9b-it-128k": 128000,
     "llama3.1-8b-pretrained-128k": 128000
 }
