@@ -87,12 +87,15 @@ if __name__ == '__main__':
         dataset = filename.split('.')[0]
         with open(f"{path}{filename}", "r", encoding="utf-8") as f:
             for line in f:
-                data = json.loads(line)
-                predictions.append(data["pred"])
-                answers.append(data["answers"])
-                all_classes = data["all_classes"]
-                if "length" in data:
-                    lengths.append(data["length"])
+                try:
+                    data = json.loads(line)
+                    predictions.append(data["pred"])
+                    answers.append(data["answers"])
+                    all_classes = data["all_classes"]
+                    if "length" in data:
+                        lengths.append(data["length"])
+                except json.decoder.JSONDecodeError:
+                    print('skip', line)
         if args.e:
             score = scorer_e(dataset, predictions, answers, lengths, all_classes)
         else:
