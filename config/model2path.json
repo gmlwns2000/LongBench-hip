@@ -20,5 +20,9 @@
     "gemma2-2b-it-8k": "google/gemma-2-2b-it",
     "gemma2-2b-it-128k": "google/gemma-2-2b-it",
     "gemma2-9b-it-128k": "google/gemma-2-9b-it",
-    "llama3.1-8b-pretrained-128k": "meta-llama/Meta-Llama-3.1-8B"
+    "llama3.1-8b-pretrained-128k": "meta-llama/Meta-Llama-3.1-8B",
+    "sglang-32k": "sglang",
+    "sglang-128k": "sglang",
+    "sglang-256k": "sglang",
+    "sglang-512k": "sglang"
 }

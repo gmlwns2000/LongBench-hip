@@ -20,5 +20,9 @@
     "gemma2-2b-it-8k": 7500,
     "gemma2-2b-it-128k": 128000,
     "gemma2-9b-it-128k": 128000,
-    "llama3.1-8b-pretrained-128k": 128000
+    "llama3.1-8b-pretrained-128k": 128000,
+    "sglang-32k": 29000,
+    "sglang-128k": 126000,
+    "sglang-256k": 254000,
+    "sglang-512k": 510000
 }

@@ -15,6 +15,7 @@ from hip.models.qwen.modeling_qwen2 import Qwen2ForCausalLM
 from vllm import LLM, SamplingParams
 
 from args import parse_args
+from hip.models.sglang_model import SglangModel
 
 # This is the customized building prompt for chat models
 def build_chat(tokenizer, prompt, model_name):
@@ -173,6 +174,13 @@ def get_pred(
                     if hasattr(m, '_clean_cache'):
                         m._clean_cache()
                 pred = tokenizer.decode(output[context_length:], skip_special_tokens=True)
+            elif isinstance(model, SglangModel):
+                pred = model.generate(
+                    input_text=prompt,
+                    max_tokens=max_gen,
+                    need_chat_prompt=True,
+                    verbose=False,
+                )
             else:
                 stop = []
                 if 'llama3' in model_name:
@@ -221,7 +229,10 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
     from hip.models.qwen.modeling_qwen2 import Qwen2CustomAttention
     from hip.models.gemma.modeling_gemma2 import Gemma2ForCausalLM, Gemma2Config
     
-    tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
+    if 'sglang' not in model_name:
+        tokenizer = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained('meta-llama/Llama-3.1-8B-Instruct')
     
     if (ATTENTION_METHOD == 'streaming_llm') or ('gemma2' in model_name):
 
@@ -300,6 +311,9 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
                 if hasattr(m, 'attention_method'):
                     m.tree_using_context_avg = False
         model = model.eval()
+    elif 'sglang' in model_name:
+        sglang_endpoint = os.getenv('SGLANG_ENDPOINT', 'http://localhost:32320/')        
+        model = SglangModel(sglang_endpoint, None)
     else: 
         model = LLM(
             path,
