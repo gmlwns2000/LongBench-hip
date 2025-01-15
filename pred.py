@@ -131,8 +131,10 @@ def get_pred(
             if len(tokenized_prompt) > max_length:
                 half = int(max_length/2)
                 prompt = tokenizer.decode(tokenized_prompt[:half], skip_special_tokens=False)+tokenizer.decode(tokenized_prompt[-half:], skip_special_tokens=False)
+            require_chat_prompt = False
             if dataset not in ["trec", "triviaqa", "samsum", "lsht", "lcc", "repobench-p"]: # chat models are better off without build prompts on these tasks
                 prompt = build_chat(tokenizer, prompt, model_name)
+                require_chat_prompt = True
             if "chatglm3" in model_name:
                 if dataset in ["trec", "triviaqa", "samsum", "lsht", "lcc", "repobench-p"]:
                     input = tokenizer(prompt, truncation=False, return_tensors="pt").to(device)
@@ -175,12 +177,37 @@ def get_pred(
                         m._clean_cache()
                 pred = tokenizer.decode(output[context_length:], skip_special_tokens=True)
             elif isinstance(model, SglangModel):
+                # if dataset == 'trec':
+                #     lines = prompt.split('\n')
+                #     prompt = [
+                #         {'role': 'system', 'content': 'Cutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\nYou are helpful assistant.'},
+                #     ]
+                #     for line in lines:
+                #         if line.lower().startswith('type:'):
+                #             prompt.append(
+                #                 {'role': 'assistant', 'content': line.strip()},
+                #             )
+                #         else:
+                #             prompt.append(
+                #                 {'role': 'user', 'content': line.strip()},
+                #             )
+                #     prompt.pop(-1)
+                #     require_chat_prompt = True
+                # if dataset == 'lcc':
+                #     require_chat_prompt = True
                 pred = model.generate(
                     input_text=prompt,
                     max_tokens=max_gen,
-                    need_chat_prompt=True,
+                    need_chat_prompt=require_chat_prompt,
                     verbose=False,
                 )
+                # print(pred)
+                
+                # if dataset == 'trec':
+                #     if pred.startswith('Type: '):
+                #         pred = pred[6:]
+                #     if pred == 'Currency':
+                #         pred = 'Currency name'
             else:
                 stop = []
                 if 'llama3' in model_name:
@@ -366,6 +393,8 @@ def load_model_and_tokenizer(path, model_name, device, seq_len):
     # model = model.eval()
     # return model, tokenizer
 
+IS_INFLLM = os.getenv('IS_INFLLM', '0') == '1'
+
 if __name__ == '__main__':
     seed_everything(42)
     args = parse_args()
@@ -385,17 +414,26 @@ if __name__ == '__main__':
     # define your model
     max_length = model2maxlen[model_name] if args.stride is None else args.stride
     if args.e:
-        datasets = ["qasper", "multifieldqa_en", "hotpotqa", "2wikimqa", "gov_report", "multi_news", \
-            "trec", "triviaqa", "samsum", "passage_count", "passage_retrieval_en", "lcc", "repobench-p"]
-    else:
-        # datasets = ["narrativeqa", "qasper", "multifieldqa_en", "multifieldqa_zh", "hotpotqa", "2wikimqa", "musique", \
-        #             "dureader", "gov_report", "qmsum", "multi_news", "vcsum", "trec", "triviaqa", "samsum", "lsht", \
-        #             "passage_count", "passage_retrieval_en", "passage_retrieval_zh", "lcc", "repobench-p"]
         datasets = [
-            'narrativeqa', 'qasper',
-            'hotpotqa', '2wikimqa',
-            'gov_report', 'multi_news',
+            "qasper", "multifieldqa_en", "hotpotqa", "2wikimqa", "gov_report", "multi_news",
+            "trec", "triviaqa", "samsum", "passage_count", "passage_retrieval_en", "lcc", "repobench-p"
         ]
+    else:
+        if IS_INFLLM:
+            datasets = [
+                "narrativeqa", "qasper", "multifieldqa_en", #"multifieldqa_zh", 
+                "hotpotqa", "2wikimqa", "musique", #"dureader", 
+                "gov_report", "qmsum", "multi_news", #"vcsum", 
+                "trec", "triviaqa", "samsum", #"lsht",
+                "passage_count", "passage_retrieval_en", #"passage_retrieval_zh", 
+                "lcc", "repobench-p"
+            ]
+        else:
+            datasets = [
+                'narrativeqa', 'qasper',
+                'hotpotqa', '2wikimqa',
+                'gov_report', 'multi_news',
+            ]
     
     # we design specific prompt format and max generation length for each task, feel free to modify them to optimize model output
     dataset2prompt = json.load(open("config/dataset2prompt.json", "r"))
